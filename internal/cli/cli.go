@@ -2,11 +2,14 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/PatOConnor43/pcp/internal/config"
@@ -25,11 +28,21 @@ type Env struct {
 	// ReadPassword reads a line from the terminal without echoing it. Nil
 	// when stdin is not a terminal.
 	ReadPassword func() ([]byte, error)
+
+	// Context stops long-running commands (serve) when canceled. Nil means
+	// run until the server fails.
+	Context context.Context
+	// Hangup delivers reload requests to serve (SIGHUP).
+	Hangup <-chan os.Signal
+	// Listening, if set, is called once serve is accepting connections.
+	Listening func(net.Addr)
 }
 
 const usage = `pcp - credential-injecting reverse proxy
 
 Usage:
+  pcp serve [flags]         Run the proxy (SIGHUP reloads config and secrets)
+  pcp routes [flags]        List routes and their local URLs
   pcp secret set <name>     Store a secret in the OS keychain (prompts, or reads stdin)
   pcp secret rm <name>      Delete a secret from the OS keychain
   pcp check [flags]         Validate config and check referenced secrets resolve
@@ -62,6 +75,10 @@ func run(args []string, env Env) error {
 	switch args[0] {
 	case "secret":
 		return runSecret(args[1:], env)
+	case "serve":
+		return runServe(args[1:], env)
+	case "routes":
+		return runRoutes(args[1:], env)
 	case "check":
 		return runCheck(args[1:], env)
 	case "help", "-h", "--help":

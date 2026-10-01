@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -159,14 +160,14 @@ func TestProxyNotFound(t *testing.T) {
 	up, got := newUpstream(t)
 	px, logs := newProxy(t, routeYAML(up.URL), secrets.Memory{"tok": testSecret, "key": "k"})
 
-	for _, path := range []string{"/nope", "/apix", "/api/../etc", "/_pcp/routes"} {
+	for _, path := range []string{"/nope", "/apix", "/api/../etc", "/_pcp/other"} {
 		resp, err := http.Get(px.URL + path)
 		if err != nil {
 			t.Fatal(err)
 		}
 		var body struct {
 			Error  string      `json:"error"`
-			Routes []routeInfo `json:"routes"`
+			Routes []RouteInfo `json:"routes"`
 		}
 		err = json.NewDecoder(resp.Body).Decode(&body)
 		resp.Body.Close()
@@ -176,7 +177,7 @@ func TestProxyNotFound(t *testing.T) {
 		if resp.StatusCode != http.StatusNotFound || resp.Header.Get("Content-Type") != "application/json" {
 			t.Errorf("%s: got %d %s", path, resp.StatusCode, resp.Header.Get("Content-Type"))
 		}
-		if len(body.Routes) != 1 || body.Routes[0] != (routeInfo{"/api", up.URL + "/base"}) {
+		if len(body.Routes) != 1 || body.Routes[0] != (RouteInfo{"/api", up.URL + "/base"}) {
 			t.Errorf("%s: routes = %+v", path, body.Routes)
 		}
 	}
@@ -315,5 +316,46 @@ routes: [{prefix: /a, upstream: https://a.com, headers: {A: '{{ token "t" }}'}}]
 				t.Errorf("error leaks secret value: %v", err)
 			}
 		})
+	}
+}
+
+func TestProxyRoutesEndpoint(t *testing.T) {
+	px, _ := newProxy(t, `
+routes:
+  - prefix: /zeta
+    upstream: https://z.example.com
+  - prefix: /alpha
+    upstream: https://a.example.com/v1
+    headers: {Authorization: '{{ secret "s" }}'}
+`, secrets.Memory{"s": testSecret})
+
+	resp, err := http.Get(px.URL + "/_pcp/routes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	raw, _ := io.ReadAll(resp.Body)
+	var body struct {
+		Usage  string
+		Routes []RouteInfo
+	}
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatal(err)
+	}
+	want := []RouteInfo{{"/alpha", "https://a.example.com/v1"}, {"/zeta", "https://z.example.com"}}
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(raw), "<prefix>") || !slices.Equal(body.Routes, want) {
+		t.Errorf("got %d %s", resp.StatusCode, raw)
+	}
+	if strings.Contains(string(raw), testSecret) {
+		t.Errorf("routes endpoint leaks secret: %s", raw)
+	}
+
+	resp, err = http.Post(px.URL+"/_pcp/routes", "text/plain", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed || resp.Header.Get("Allow") != "GET, HEAD" {
+		t.Errorf("POST: %d %v", resp.StatusCode, resp.Header)
 	}
 }

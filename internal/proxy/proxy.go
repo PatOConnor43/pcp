@@ -36,6 +36,7 @@ type Options struct {
 type Proxy struct {
 	router  *Router
 	routes  map[*config.Route]*routeHeaders
+	info    []RouteInfo
 	sources map[string]tokens.Source
 	rp      *httputil.ReverseProxy
 	logger  *slog.Logger
@@ -89,6 +90,7 @@ func New(cfg *config.Config, opts Options) (*Proxy, error) {
 	p := &Proxy{
 		router:  NewRouter(cfg.Routes),
 		routes:  map[*config.Route]*routeHeaders{},
+		info:    Routes(cfg.Routes),
 		sources: sources,
 		logger:  opts.Logger,
 	}
@@ -126,7 +128,11 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		)
 	}()
 	if !ok {
-		p.notFound(rec, r)
+		if cleanPath(r.URL.EscapedPath()) == routesPath {
+			p.serveRoutes(rec, r)
+		} else {
+			p.notFound(rec, r)
+		}
 		return
 	}
 	prefix = route.Prefix
@@ -216,19 +222,41 @@ func (p *Proxy) upstreamError(w http.ResponseWriter, r *http.Request, err error)
 	})
 }
 
-type routeInfo struct {
+// RouteInfo describes a route without its credentials.
+type RouteInfo struct {
 	Prefix   string `json:"prefix"`
 	Upstream string `json:"upstream"`
 }
 
-func (p *Proxy) notFound(w http.ResponseWriter, r *http.Request) {
-	routes := make([]routeInfo, 0, len(p.router.routes))
-	for _, rt := range p.router.routes {
-		routes = append(routes, routeInfo{rt.Prefix, rt.UpstreamURL.String()})
+// Routes lists routes sorted by prefix.
+func Routes(routes []config.Route) []RouteInfo {
+	infos := make([]RouteInfo, 0, len(routes))
+	for _, rt := range routes {
+		infos = append(infos, RouteInfo{rt.Prefix, rt.UpstreamURL.String()})
 	}
+	slices.SortFunc(infos, func(a, b RouteInfo) int { return strings.Compare(a.Prefix, b.Prefix) })
+	return infos
+}
+
+// routesPath serves the route list so clients can discover what's available.
+const routesPath = config.ReservedPrefix + "/routes"
+
+func (p *Proxy) serveRoutes(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"usage":  "Send requests to <this server><prefix>/<path>. They are forwarded to <upstream>/<path> with credentials added.",
+		"routes": p.info,
+	})
+}
+
+func (p *Proxy) notFound(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, map[string]any{
 		"error":  fmt.Sprintf("no route matches %s", r.URL.EscapedPath()),
-		"routes": routes,
+		"routes": p.info,
 	})
 }
 
@@ -308,7 +336,9 @@ func checkHeaderValue(v string) error {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	enc := json.NewEncoder(w)
+	enc.SetEscapeHTML(false) // responses are read by tools/LLMs, not embedded in HTML
+	_ = enc.Encode(v)
 }
 
 // statusRecorder captures the response status for access logging. Unwrap lets
