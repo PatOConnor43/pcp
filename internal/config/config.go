@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"net/textproto"
 	"net/url"
 	"os"
 	"path"
@@ -199,10 +200,16 @@ func (r *Route) normalize() error {
 	u.RawPath = strings.TrimRight(u.RawPath, "/")
 	r.UpstreamURL = u
 
-	for name := range r.Headers {
+	canonical := map[string]string{}
+	for _, name := range slices.Sorted(maps.Keys(r.Headers)) {
 		if !isToken(name) {
 			return fmt.Errorf("headers: invalid header name %q", name)
 		}
+		key := textproto.CanonicalMIMEHeaderKey(name)
+		if prev, ok := canonical[key]; ok {
+			return fmt.Errorf("headers: %q and %q are the same header", prev, name)
+		}
+		canonical[key] = name
 	}
 	return nil
 }

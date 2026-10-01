@@ -114,6 +114,7 @@ tokens:
 		{"upstream query", "routes: [{prefix: /a, upstream: 'https://a.com?x=1'}]", "query"},
 		{"upstream userinfo", "routes: [{prefix: /a, upstream: 'https://u:p@a.com'}]", "userinfo"},
 		{"bad header name", "routes: [{prefix: /a, upstream: https://a.com, headers: {'X Bad': v}}]", "invalid header name"},
+		{"header names differ only by case", "routes: [{prefix: /a, upstream: https://a.com, headers: {authorization: x, Authorization: y}}]", "are the same header"},
 		{"template syntax", `routes: [{prefix: /a, upstream: https://a.com, headers: {A: '{{ secret "x" '}}]`, "unclosed action"},
 		{"template unknown func", `routes: [{prefix: /a, upstream: https://a.com, headers: {A: '{{ env "x" }}'}}]`, "not defined"},
 		{"secret non-literal", `routes: [{prefix: /a, upstream: https://a.com, headers: {A: '{{ secret .X }}'}}]`, "string literal"},
