@@ -32,6 +32,9 @@ type Source interface {
 	// to Token fetches a new one. Passing the rejected value avoids
 	// discarding a token that was already refreshed by another request.
 	Invalidate(tok string)
+	// Expiry returns when the cached token expires, or the zero time if no
+	// token is cached or the auth server didn't say.
+	Expiry() time.Time
 }
 
 // FetchError reports a failure to obtain a token. Its message never includes
@@ -146,4 +149,13 @@ func (c *ClientCredentials) Invalidate(tok string) {
 	if c.tok != nil && c.tok.AccessToken == tok {
 		c.tok = nil
 	}
+}
+
+func (c *ClientCredentials) Expiry() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.tok == nil {
+		return time.Time{}
+	}
+	return c.tok.Expiry
 }

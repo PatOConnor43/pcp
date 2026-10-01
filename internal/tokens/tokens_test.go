@@ -79,15 +79,24 @@ func TestTokenCached(t *testing.T) {
 	if n := a.fetches.Load(); n != 1 {
 		t.Errorf("fetches = %d, want 1", n)
 	}
+	if left := time.Until(s.Expiry()); left < 59*time.Minute || left > time.Hour {
+		t.Errorf("Expiry in %v, want ~1h", left)
+	}
 }
 
 func TestTokenWithoutExpiryCached(t *testing.T) {
 	a := newAuthServer(t, 0)
 	s := a.source()
+	if !s.Expiry().IsZero() {
+		t.Error("Expiry before fetch should be zero")
+	}
 	mustToken(t, s)
 	mustToken(t, s)
 	if n := a.fetches.Load(); n != 1 {
 		t.Errorf("fetches = %d, want 1", n)
+	}
+	if !s.Expiry().IsZero() {
+		t.Errorf("Expiry = %v, want zero when expires_in omitted", s.Expiry())
 	}
 }
 
