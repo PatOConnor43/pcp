@@ -176,6 +176,17 @@ func TestLoad(t *testing.T) {
 	}
 }
 
+func TestExampleConfig(t *testing.T) {
+	cfg, err := Load(filepath.Join("..", "..", "examples", "config.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"github", "jira", "myapi-client-secret", "weather-key"}
+	if got := cfg.SecretNames(); !slices.Equal(got, want) {
+		t.Errorf("SecretNames = %v, want %v", got, want)
+	}
+}
+
 func TestDefaultPath(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "/xdg")
 	got, err := DefaultPath()

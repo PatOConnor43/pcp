@@ -1,0 +1,53 @@
+# Example pcp config. Copy to ~/.config/pcp/config.yaml and adjust.
+#
+# Secrets referenced with {{ secret "name" }} live in the OS keychain:
+#   pcp secret set github
+# Then verify everything resolves:
+#   pcp check --fetch
+
+# Address to listen on. Keep this on loopback: anyone who can reach it can
+# use your credentials.
+listen: 127.0.0.1:8080
+
+# Token sources exchange long-lived credentials for short-lived tokens. pcp
+# fetches lazily, caches until shortly before expiry, and refetches after an
+# upstream 401.
+tokens:
+  myapi:
+    type: oauth2_client_credentials
+    token_url: https://auth.example.com/oauth/token
+    client_id: my-client-id                     # plain text, or {{ secret "..." }}
+    client_secret: '{{ secret "myapi-client-secret" }}'
+    scopes: [read, write]                       # optional
+    params:                                     # optional extra form fields
+      audience: https://api.example.com
+
+# Requests to http://<listen><prefix>/<path> are forwarded to <upstream>/<path>
+# with these headers set (replacing any the client sent).
+routes:
+  # Bearer token from the keychain.
+  - prefix: /github
+    upstream: https://api.github.com
+    headers:
+      Authorization: 'Bearer {{ secret "github" }}'
+      Accept: application/vnd.github+json
+      X-GitHub-Api-Version: "2022-11-28"
+
+  # Basic auth: store the base64 of "email:api-token" as the secret.
+  #   printf '%s' 'me@example.com:TOKEN' | base64 | pcp secret set jira
+  - prefix: /jira
+    upstream: https://example.atlassian.net/rest/api/3
+    headers:
+      Authorization: 'Basic {{ secret "jira" }}'
+
+  # API key header.
+  - prefix: /weather
+    upstream: https://api.weather.example.com/v2
+    headers:
+      X-API-Key: '{{ secret "weather-key" }}'
+
+  # OAuth2 client-credentials token.
+  - prefix: /myapi
+    upstream: https://api.example.com
+    headers:
+      Authorization: 'Bearer {{ token "myapi" }}'
