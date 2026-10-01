@@ -54,6 +54,12 @@ func (t *Template) UnmarshalYAML(unmarshal func(any) error) error {
 	return nil
 }
 
+// Compile parses the template with the given function implementations.
+// Functions not in funcs fall back to stubs returning "".
+func (t Template) Compile(funcs template.FuncMap) (*template.Template, error) {
+	return template.New("").Funcs(stubFuncs).Funcs(funcs).Option("missingkey=error").Parse(t.raw)
+}
+
 // Raw returns the unparsed template text.
 func (t Template) Raw() string { return t.raw }
 

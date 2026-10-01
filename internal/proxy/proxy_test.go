@@ -246,9 +246,9 @@ func TestProxyStreamsResponses(t *testing.T) {
 }
 
 func TestProxyTLSUpstream(t *testing.T) {
-	var gotAuth string
+	gotAuth := make(chan string, 1)
 	up := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotAuth = r.Header.Get("Authorization")
+		gotAuth <- r.Header.Get("Authorization")
 	}))
 	defer up.Close()
 
@@ -262,8 +262,8 @@ func TestProxyTLSUpstream(t *testing.T) {
 	}
 	rec := httptest.NewRecorder()
 	p.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/t/ok", nil))
-	if rec.Code != http.StatusOK || gotAuth != "x" {
-		t.Errorf("got %d, auth %q", rec.Code, gotAuth)
+	if auth := <-gotAuth; rec.Code != http.StatusOK || auth != "x" {
+		t.Errorf("got %d, auth %q", rec.Code, auth)
 	}
 }
 
@@ -294,11 +294,11 @@ func TestNewErrors(t *testing.T) {
 			notErr:  "line1",
 		},
 		{
-			name: "token sources not supported yet",
+			name: "missing token source secret",
 			yaml: `
-tokens: {t: {type: oauth2_client_credentials, token_url: https://a.com/token, client_id: a, client_secret: b}}
+tokens: {t: {type: oauth2_client_credentials, token_url: https://a.com/token, client_id: a, client_secret: '{{ secret "cs" }}'}}
 routes: [{prefix: /a, upstream: https://a.com, headers: {A: '{{ token "t" }}'}}]`,
-			wantErr: "not supported yet",
+			wantErr: "missing secrets: cs",
 		},
 	}
 	for _, tt := range tests {

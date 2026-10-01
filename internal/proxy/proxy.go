@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -16,13 +17,15 @@ import (
 
 	"github.com/PatOConnor43/pcp/internal/config"
 	"github.com/PatOConnor43/pcp/internal/secrets"
+	"github.com/PatOConnor43/pcp/internal/tokens"
 )
 
 type Options struct {
 	// Secrets resolves secret references. All referenced secrets are read once
 	// in New and cached.
 	Secrets secrets.Store
-	// Transport is used for upstream requests. Defaults to http.DefaultTransport.
+	// Transport is used for upstream and token requests. Defaults to
+	// http.DefaultTransport.
 	Transport http.RoundTripper
 	// Logger receives access and error logs. Defaults to slog.Default().
 	Logger *slog.Logger
@@ -32,9 +35,19 @@ type Options struct {
 // credential headers injected.
 type Proxy struct {
 	router  *Router
-	headers map[*config.Route]http.Header
+	routes  map[*config.Route]*routeHeaders
+	sources map[string]tokens.Source
 	rp      *httputil.ReverseProxy
 	logger  *slog.Logger
+}
+
+// routeHeaders holds a route's credential headers. Headers that only use
+// secrets are rendered once in New; headers that use tokens are rendered per
+// request since tokens expire.
+type routeHeaders struct {
+	static  http.Header
+	dynamic map[string]*template.Template // header name -> template
+	tokens  []string                      // token sources used by dynamic
 }
 
 type matchKey struct{}
@@ -42,7 +55,12 @@ type matchKey struct{}
 type match struct {
 	route  *config.Route
 	target *url.URL
+	header http.Header       // credential headers to set
+	tokens map[string]string // token values used, by source name
 }
+
+// tokenFetchTimeout bounds a single token request.
+const tokenFetchTimeout = 30 * time.Second
 
 func New(cfg *config.Config, opts Options) (*Proxy, error) {
 	if opts.Logger == nil {
@@ -53,24 +71,41 @@ func New(cfg *config.Config, opts Options) (*Proxy, error) {
 		return nil, err
 	}
 
+	secret := func(name string) (string, error) {
+		v, ok := resolved[name]
+		if !ok {
+			return "", fmt.Errorf("secret %q not loaded", name)
+		}
+		return v, nil
+	}
+	sources, err := tokens.NewSources(cfg.Tokens, secret, &http.Client{
+		Transport: opts.Transport,
+		Timeout:   tokenFetchTimeout,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	p := &Proxy{
 		router:  NewRouter(cfg.Routes),
-		headers: map[*config.Route]http.Header{},
+		routes:  map[*config.Route]*routeHeaders{},
+		sources: sources,
 		logger:  opts.Logger,
 	}
 	for _, rt := range p.router.routes {
-		h, err := renderHeaders(rt, resolved)
+		h, err := compileHeaders(rt, secret)
 		if err != nil {
 			return nil, fmt.Errorf("route %s: %w", rt.Prefix, err)
 		}
-		p.headers[rt] = h
+		p.routes[rt] = h
 	}
 
 	p.rp = &httputil.ReverseProxy{
-		Rewrite:       p.rewrite,
-		Transport:     opts.Transport,
-		FlushInterval: -1,
-		ErrorHandler:  p.upstreamError,
+		Rewrite:        p.rewrite,
+		ModifyResponse: p.modifyResponse,
+		Transport:      opts.Transport,
+		FlushInterval:  -1,
+		ErrorHandler:   p.upstreamError,
 	}
 	return p, nil
 }
@@ -81,30 +116,90 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	route, target, ok := p.router.Match(r.URL)
 	prefix := ""
-	if ok {
-		prefix = route.Prefix
-		ctx := context.WithValue(r.Context(), matchKey{}, match{route, target})
-		p.rp.ServeHTTP(rec, r.WithContext(ctx))
-	} else {
+	defer func() {
+		p.logger.Info("request",
+			"method", r.Method,
+			"path", r.URL.EscapedPath(),
+			"route", prefix,
+			"status", rec.status,
+			"duration", time.Since(start),
+		)
+	}()
+	if !ok {
 		p.notFound(rec, r)
+		return
 	}
+	prefix = route.Prefix
 
-	p.logger.Info("request",
-		"method", r.Method,
-		"path", r.URL.EscapedPath(),
-		"route", prefix,
-		"status", rec.status,
-		"duration", time.Since(start),
-	)
+	header, toks, err := p.credentialHeaders(r.Context(), route)
+	if errors.Is(err, context.Canceled) {
+		rec.WriteHeader(499) // client went away during a token fetch
+		return
+	}
+	if err != nil {
+		p.logger.Error("credential headers failed", "route", prefix, "err", err)
+		writeJSON(rec, http.StatusBadGateway, map[string]any{"error": err.Error()})
+		return
+	}
+	ctx := context.WithValue(r.Context(), matchKey{}, match{route, target, header, toks})
+	p.rp.ServeHTTP(rec, r.WithContext(ctx))
+}
+
+// credentialHeaders returns the headers to inject for route, fetching any
+// tokens it needs. Errors are safe to return to the client.
+func (p *Proxy) credentialHeaders(ctx context.Context, route *config.Route) (http.Header, map[string]string, error) {
+	rh := p.routes[route]
+	if len(rh.tokens) == 0 {
+		return rh.static, nil, nil
+	}
+	toks := map[string]string{}
+	for _, name := range rh.tokens {
+		v, err := p.sources[name].Token(ctx)
+		if err != nil {
+			return nil, nil, err
+		}
+		toks[name] = v
+	}
+	funcs := template.FuncMap{"token": func(name string) string { return toks[name] }}
+	h := rh.static.Clone()
+	for name, tpl := range rh.dynamic {
+		t, err := tpl.Clone()
+		if err != nil {
+			return nil, nil, fmt.Errorf("header %s: %w", name, err)
+		}
+		v, err := execute(t.Funcs(funcs))
+		if err != nil {
+			return nil, nil, fmt.Errorf("header %s: %w", name, err)
+		}
+		if err := checkHeaderValue(v); err != nil {
+			return nil, nil, fmt.Errorf("header %s: %w", name, err)
+		}
+		h.Set(name, v)
+	}
+	return h, toks, nil
 }
 
 func (p *Proxy) rewrite(pr *httputil.ProxyRequest) {
 	m := pr.In.Context().Value(matchKey{}).(match)
 	pr.Out.URL = m.target
 	pr.Out.Host = "" // use the upstream's host
-	for k, v := range p.headers[m.route] {
+	for k, v := range m.header {
 		pr.Out.Header[k] = slices.Clone(v)
 	}
+}
+
+// modifyResponse drops cached tokens the upstream rejected so the next
+// request fetches fresh ones. The rejected response is still returned as-is.
+func (p *Proxy) modifyResponse(resp *http.Response) error {
+	if resp.StatusCode != http.StatusUnauthorized {
+		return nil
+	}
+	m := resp.Request.Context().Value(matchKey{}).(match)
+	for name, v := range m.tokens {
+		p.sources[name].Invalidate(v)
+		p.logger.Info("upstream returned 401; invalidated token", "route", m.route.Prefix, "token_source", name)
+	}
+	return nil
 }
 
 func (p *Proxy) upstreamError(w http.ResponseWriter, r *http.Request, err error) {
@@ -161,34 +256,53 @@ func resolveSecrets(names []string, store secrets.Store) (map[string]string, err
 	return resolved, nil
 }
 
-// renderHeaders evaluates a route's header templates. Secrets are cached for
-// the life of the Proxy, so the result is fixed.
-func renderHeaders(rt *config.Route, resolved map[string]string) (http.Header, error) {
-	funcs := template.FuncMap{
-		"secret": func(name string) string { return resolved[name] },
-		"token":  func(string) string { return "" }, // rejected below until token sources exist
-	}
-	h := http.Header{}
-	for name, tpl := range rt.Headers {
-		if len(tpl.Tokens()) > 0 {
-			return nil, fmt.Errorf("header %s: token sources are not supported yet", name)
-		}
-		t, err := template.New(name).Funcs(funcs).Parse(tpl.Raw())
+// compileHeaders prepares a route's header templates. Secrets are cached for
+// the life of the Proxy, so headers without token references are rendered
+// immediately.
+func compileHeaders(rt *config.Route, secret func(string) (string, error)) (*routeHeaders, error) {
+	rh := &routeHeaders{static: http.Header{}, dynamic: map[string]*template.Template{}}
+	for _, name := range slices.Sorted(maps.Keys(rt.Headers)) {
+		tpl := rt.Headers[name]
+		t, err := tpl.Compile(template.FuncMap{"secret": secret})
 		if err != nil {
 			return nil, fmt.Errorf("header %s: %w", name, err)
 		}
-		var sb strings.Builder
-		if err := t.Execute(&sb, nil); err != nil {
+		if len(tpl.Tokens()) > 0 {
+			rh.dynamic[name] = t
+			for _, tok := range tpl.Tokens() {
+				if !slices.Contains(rh.tokens, tok) {
+					rh.tokens = append(rh.tokens, tok)
+				}
+			}
+			continue
+		}
+		v, err := execute(t)
+		if err != nil {
 			return nil, fmt.Errorf("header %s: %w", name, err)
 		}
-		v := sb.String()
-		if strings.ContainsAny(v, "\r\n\x00") {
-			// Don't include the value; it likely contains a secret.
-			return nil, fmt.Errorf("header %s: value contains a newline or NUL", name)
+		if err := checkHeaderValue(v); err != nil {
+			return nil, fmt.Errorf("header %s: %w", name, err)
 		}
-		h.Set(name, v)
+		rh.static.Set(name, v)
 	}
-	return h, nil
+	return rh, nil
+}
+
+func execute(t *template.Template) (string, error) {
+	var sb strings.Builder
+	if err := t.Execute(&sb, nil); err != nil {
+		return "", err
+	}
+	return sb.String(), nil
+}
+
+// checkHeaderValue rejects values that can't be sent as a header. The value
+// is not included in the error since it likely contains a credential.
+func checkHeaderValue(v string) error {
+	if strings.ContainsAny(v, "\r\n\x00") {
+		return errors.New("value contains a newline or NUL")
+	}
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
