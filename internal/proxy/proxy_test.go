@@ -225,7 +225,9 @@ func TestProxyStreamsResponses(t *testing.T) {
 	defer close(release)
 	px, _ := newProxy(t, "routes: [{prefix: /s, upstream: "+up.URL+"}]", nil)
 
-	resp, err := http.Get(px.URL + "/s/events")
+	// Closed by the defer below; bodyclose loses track because the body is
+	// read in a goroutine.
+	resp, err := http.Get(px.URL + "/s/events") //nolint:bodyclose
 	if err != nil {
 		t.Fatal(err)
 	}

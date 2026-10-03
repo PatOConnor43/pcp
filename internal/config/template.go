@@ -34,7 +34,7 @@ func ParseTemplate(s string) (Template, error) {
 	if t.Tree == nil {
 		return tpl, nil
 	}
-	if err := walk(t.Tree.Root, tpl.collect); err != nil {
+	if err := walk(t.Root, tpl.collect); err != nil {
 		return Template{}, err
 	}
 	return tpl, nil

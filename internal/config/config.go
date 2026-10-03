@@ -247,8 +247,8 @@ func isToken(s string) bool {
 		return false
 	}
 	for _, c := range s {
-		if !('a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9' ||
-			strings.ContainsRune("!#$%&'*+-.^_`|~", c)) {
+		alnum := 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z' || '0' <= c && c <= '9'
+		if !alnum && !strings.ContainsRune("!#$%&'*+-.^_`|~", c) {
 			return false
 		}
 	}
