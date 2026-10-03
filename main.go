@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 
 	"golang.org/x/term"
@@ -13,6 +14,21 @@ import (
 	"github.com/PatOConnor43/pcp/internal/cli"
 	"github.com/PatOConnor43/pcp/internal/secrets"
 )
+
+// version is set at build time by release builds (-ldflags "-X main.version=...").
+var version string
+
+// buildVersion returns the release version, falling back to the module
+// version recorded by go install.
+func buildVersion() string {
+	if version != "" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" {
+		return info.Main.Version
+	}
+	return "(devel)"
+}
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -23,6 +39,7 @@ func main() {
 		Stdin:   os.Stdin,
 		Stdout:  os.Stdout,
 		Stderr:  os.Stderr,
+		Version: buildVersion(),
 		Secrets: secrets.Keyring{},
 		Context: ctx,
 		Hangup:  hangup,

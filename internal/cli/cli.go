@@ -22,6 +22,9 @@ type Env struct {
 	Stdout io.Writer
 	Stderr io.Writer
 
+	// Version is printed by the version command.
+	Version string
+
 	Secrets secrets.Manager
 	// Transport is used for outbound HTTP. Nil means http.DefaultTransport.
 	Transport http.RoundTripper
@@ -46,6 +49,7 @@ Usage:
   pcp secret set <name>     Store a secret in the OS keychain (prompts, or reads stdin)
   pcp secret rm <name>      Delete a secret from the OS keychain
   pcp check [flags]         Validate config and check referenced secrets resolve
+  pcp version               Print the pcp version
 `
 
 // errUsage signals a usage error whose message has already been printed.
@@ -81,6 +85,9 @@ func run(args []string, env Env) error {
 		return runRoutes(args[1:], env)
 	case "check":
 		return runCheck(args[1:], env)
+	case "version", "--version":
+		fmt.Fprintf(env.Stdout, "pcp %s\n", env.Version)
+		return nil
 	case "help", "-h", "--help":
 		fmt.Fprint(env.Stdout, usage)
 		return nil

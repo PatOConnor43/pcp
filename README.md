@@ -18,12 +18,31 @@ loopback, and pcp speaks HTTPS to the upstream.
 
 ## Install
 
+Download the archive for your platform from the
+[releases page](https://github.com/PatOConnor43/pcp/releases/latest), extract
+it, and put `pcp` somewhere on your `PATH`:
+
+```sh
+# macOS (Apple silicon) example; pick the archive matching your OS/arch
+VERSION=0.1.0
+curl -sSL "https://github.com/PatOConnor43/pcp/releases/download/v${VERSION}/pcp_${VERSION}_darwin_arm64.tar.gz" | tar -xz pcp
+sudo mv pcp /usr/local/bin/
+pcp version
+```
+
+Each release includes a `checksums.txt` for verifying downloads. On macOS, if
+you downloaded the archive with a browser and Gatekeeper blocks the binary, run
+`xattr -d com.apple.quarantine pcp`.
+
+Or build from source (requires Go 1.26+):
+
 ```sh
 go install github.com/PatOConnor43/pcp@latest
 ```
 
-Requires Go 1.26+. Secrets are stored in the macOS Keychain, Linux Secret
-Service (GNOME Keyring, KWallet), or Windows Credential Manager.
+Secrets are stored in the macOS Keychain, Linux Secret Service (GNOME Keyring,
+KWallet), or Windows Credential Manager. On Linux, a Secret Service provider
+must be running; headless servers often don't have one.
 
 ## Quick start
 
@@ -149,6 +168,7 @@ grant against `token_url` (form-encoded request; JSON response with
 | `pcp secret set <name>` | Store a secret. Prompts without echo on a terminal; otherwise reads stdin (one trailing newline is trimmed). |
 | `pcp secret rm <name>` | Delete a secret. |
 | `pcp check [--fetch]` | Validate config and report each secret as ok/MISSING. `--fetch` also requests a token from each token source and reports its expiry (never the token). Exits 1 on any problem. |
+| `pcp version` | Print the pcp version. |
 
 `pcp serve` reloads config and secrets on `SIGHUP`
 (`pkill -HUP -x pcp`). If the new config is invalid, the error is logged and

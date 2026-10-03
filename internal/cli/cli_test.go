@@ -52,6 +52,14 @@ func TestUsage(t *testing.T) {
 	}
 }
 
+func TestVersion(t *testing.T) {
+	for _, arg := range []string{"version", "--version"} {
+		if r := invoke(t, Env{Version: "v1.2.3"}, arg); r.code != 0 || r.stdout != "pcp v1.2.3\n" {
+			t.Errorf("%s: %+v", arg, r)
+		}
+	}
+}
+
 func TestSecretSetFromStdin(t *testing.T) {
 	for _, in := range []string{"tok123", "tok123\n", "tok123\r\n"} {
 		store := secrets.Memory{}
