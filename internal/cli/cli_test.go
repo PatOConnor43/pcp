@@ -241,9 +241,47 @@ func TestCheckInvalidConfig(t *testing.T) {
 		t.Errorf("%+v", r)
 	}
 
-	r = invoke(t, Env{}, "check", "--config", filepath.Join(t.TempDir(), "missing.yaml"))
-	if r.code != 1 || !strings.Contains(r.stderr, "no such file") {
+	missing := filepath.Join(t.TempDir(), "missing.yaml")
+	r = invoke(t, Env{}, "check", "--config", missing)
+	if r.code != 1 || !strings.Contains(r.stderr, "create one with: pcp init --config "+missing) {
 		t.Errorf("missing file: %+v", r)
+	}
+}
+
+func TestMissingDefaultConfig(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	for _, cmd := range []string{"check", "routes", "serve"} {
+		if r := invoke(t, Env{}, cmd); r.code != 1 || !strings.HasSuffix(r.stderr, "create one with: pcp init\n") {
+			t.Errorf("%s: %+v", cmd, r)
+		}
+	}
+}
+
+func TestInit(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	path := filepath.Join(dir, "pcp", "config.yaml")
+
+	r := invoke(t, Env{}, "init")
+	if r.code != 0 || !strings.Contains(r.stderr, "Wrote "+path) {
+		t.Fatalf("%+v", r)
+	}
+	if r := invoke(t, Env{}, "routes"); r.code != 0 || !strings.Contains(r.stdout, "/github") {
+		t.Errorf("starter config doesn't load: %+v", r)
+	}
+
+	os.WriteFile(path, []byte("edited"), 0o600)
+	if r := invoke(t, Env{}, "init"); r.code != 1 || !strings.Contains(r.stderr, "already exists") {
+		t.Errorf("overwrite without --force: %+v", r)
+	}
+	if b, _ := os.ReadFile(path); string(b) != "edited" {
+		t.Errorf("existing config modified: %q", b)
+	}
+	if r := invoke(t, Env{}, "init", "--force"); r.code != 0 {
+		t.Errorf("--force: %+v", r)
+	}
+	if b, _ := os.ReadFile(path); string(b) != starterConfig {
+		t.Errorf("--force didn't overwrite: %q", b)
 	}
 }
 

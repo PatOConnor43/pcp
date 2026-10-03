@@ -7,7 +7,7 @@
 
 # Address to listen on. Keep this on loopback: anyone who can reach it can
 # use your credentials.
-listen: 127.0.0.1:8080
+listen: 127.0.0.1:7277
 
 # Token sources exchange long-lived credentials for short-lived tokens. pcp
 # fetches lazily, caches until shortly before expiry, and refetches after an

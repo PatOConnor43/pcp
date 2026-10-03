@@ -6,7 +6,6 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/PatOConnor43/pcp/internal/config"
 	"github.com/PatOConnor43/pcp/internal/proxy"
 )
 
@@ -25,7 +24,7 @@ func runRoutes(args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	cfg, err := config.Load(path)
+	cfg, err := loadConfig(path)
 	if err != nil {
 		return err
 	}

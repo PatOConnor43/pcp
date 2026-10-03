@@ -104,7 +104,7 @@ func runServe(args []string, env Env) error {
 // loadProxy loads config and builds a proxy, reading secrets fresh from the
 // store.
 func loadProxy(path string, env Env, logger *slog.Logger) (*config.Config, *proxy.Proxy, error) {
-	cfg, err := config.Load(path)
+	cfg, err := loadConfig(path)
 	if err != nil {
 		return nil, nil, err
 	}

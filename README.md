@@ -5,10 +5,10 @@ This is a project meant to act as a curl proxy to automatically add headers to r
 pcp is a local reverse proxy. You map a path prefix to an upstream API and the
 headers it needs; pcp keeps the secrets in your OS keychain and adds them to
 every request. The client (an LLM agent, a script, you) only ever sees
-`http://127.0.0.1:8080/...`.
+`http://127.0.0.1:7277/...`.
 
 ```
-curl -s localhost:8080/github/user/repos?per_page=5
+curl -s localhost:7277/github/user/repos?per_page=5
   → GET https://api.github.com/user/repos?per_page=5
     Authorization: Bearer <from keychain>
 ```
@@ -52,7 +52,13 @@ must be running; headless servers often don't have one.
 
 ## Quick start
 
-1. Create `~/.config/pcp/config.yaml`:
+1. Create a starter config at `~/.config/pcp/config.yaml`:
+
+   ```sh
+   pcp init
+   ```
+
+   It routes `/github` to the GitHub API:
 
    ```yaml
    routes:
@@ -79,7 +85,7 @@ must be running; headless servers often don't have one.
 4. Use it:
 
    ```sh
-   curl -s localhost:8080/github/user
+   curl -s localhost:7277/github/user
    ```
 
 ## Configuration
@@ -90,7 +96,7 @@ See [`examples/config.yaml`](examples/config.yaml) for Bearer, Basic, API-key,
 and OAuth2 examples.
 
 ```yaml
-listen: 127.0.0.1:8080        # default
+listen: 127.0.0.1:7277        # default
 
 tokens:                       # optional
   myapi:
@@ -169,6 +175,7 @@ grant against `token_url` (form-encoded request; JSON response with
 
 | Command | Description |
 |---|---|
+| `pcp init [--force]` | Write a starter config. Refuses to overwrite an existing file without `--force`. |
 | `pcp serve [--listen addr] [--debug]` | Run the proxy. |
 | `pcp routes [--json]` | List routes with their local URLs. Doesn't read the keychain. |
 | `pcp secret set <name>` | Store a secret. Prompts without echo on a terminal; otherwise reads stdin (one trailing newline is trimmed). |
@@ -200,12 +207,12 @@ Add something like this to your agent's instructions (e.g. `CLAUDE.md`):
 ```markdown
 ## API access
 
-A local proxy at http://127.0.0.1:8080 adds credentials to API requests.
+A local proxy at http://127.0.0.1:7277 adds credentials to API requests.
 Never ask for, look up, or include API tokens yourself.
 
-- List available APIs: `curl -s http://127.0.0.1:8080/_pcp/routes`
+- List available APIs: `curl -s http://127.0.0.1:7277/_pcp/routes`
 - Call an API by putting its route prefix before the API path, e.g.
-  `curl -s http://127.0.0.1:8080/github/user` instead of
+  `curl -s http://127.0.0.1:7277/github/user` instead of
   `curl -s https://api.github.com/user`.
 - Don't set `Authorization` or other credential headers; the proxy sets them.
 - A `502` mentioning "token source" means the proxy couldn't authenticate.

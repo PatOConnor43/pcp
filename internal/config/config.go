@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	DefaultListen = "127.0.0.1:8080"
+	DefaultListen = "127.0.0.1:7277"
 
 	// ReservedPrefix is used for pcp's own endpoints (e.g. /_pcp/routes).
 	ReservedPrefix = "/_pcp"

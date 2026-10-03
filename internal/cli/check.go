@@ -36,7 +36,7 @@ func runCheck(args []string, env Env) error {
 	if err != nil {
 		return err
 	}
-	cfg, err := config.Load(path)
+	cfg, err := loadConfig(path)
 	if err != nil {
 		return err
 	}

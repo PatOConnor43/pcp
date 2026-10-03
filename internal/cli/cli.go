@@ -44,6 +44,7 @@ type Env struct {
 const usage = `pcp - credential-injecting reverse proxy
 
 Usage:
+  pcp init [flags]          Create a starter config file
   pcp serve [flags]         Run the proxy (SIGHUP reloads config and secrets)
   pcp routes [flags]        List routes and their local URLs
   pcp secret set <name>     Store a secret in the OS keychain (prompts, or reads stdin)
@@ -77,6 +78,8 @@ func run(args []string, env Env) error {
 		return errUsage
 	}
 	switch args[0] {
+	case "init":
+		return runInit(args[1:], env)
 	case "secret":
 		return runSecret(args[1:], env)
 	case "serve":
@@ -106,6 +109,20 @@ func configFlag(fs *flag.FlagSet) func() (string, error) {
 		}
 		return config.DefaultPath()
 	}
+}
+
+// loadConfig loads the config at path, pointing to pcp init if it doesn't
+// exist.
+func loadConfig(path string) (*config.Config, error) {
+	cfg, err := config.Load(path)
+	if errors.Is(err, os.ErrNotExist) {
+		cmd := "pcp init"
+		if def, _ := config.DefaultPath(); path != def {
+			cmd += " --config " + path
+		}
+		return nil, fmt.Errorf("no config file at %s; create one with: %s", path, cmd)
+	}
+	return cfg, err
 }
 
 func newFlagSet(name string, env Env) *flag.FlagSet {
