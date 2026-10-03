@@ -18,7 +18,13 @@ loopback, and pcp speaks HTTPS to the upstream.
 
 ## Install
 
-Download the archive for your platform from the
+With [Homebrew](https://brew.sh) (macOS and Linux):
+
+```sh
+brew install --cask patoconnor43/tap/pcp
+```
+
+Or download the archive for your platform from the
 [releases page](https://github.com/PatOConnor43/pcp/releases/latest), extract
 it, and put `pcp` somewhere on your `PATH`:
 

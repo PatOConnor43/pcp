@@ -36,3 +36,21 @@ changelog:
     exclude:
       - "^docs:"
       - "^test:"
+
+homebrew_casks:
+  - name: pcp
+    description: Local reverse proxy that injects credentials so LLM agents can call APIs without handling secrets
+    homepage: https://github.com/PatOConnor43/pcp
+    license: MIT
+    repository:
+      owner: PatOConnor43
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    hooks:
+      post:
+        # Release binaries aren't notarized; clear the quarantine flag so
+        # Gatekeeper doesn't block them.
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/pcp"]
+          end
