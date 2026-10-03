@@ -88,6 +88,53 @@ must be running; headless servers often don't have one.
    curl -s localhost:7277/github/user
    ```
 
+## Running in the background (macOS)
+
+To start pcp at login and keep it running, install it as a LaunchAgent. Run
+`pcp check` first: if a secret is missing, pcp exits and launchd keeps
+restarting it.
+
+```sh
+cat > ~/Library/LaunchAgents/com.github.patoconnor43.pcp.plist <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.github.patoconnor43.pcp</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>$(command -v pcp)</string>
+    <string>serve</string>
+    <string>--config</string>
+    <string>$HOME/.config/pcp/config.yaml</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>StandardErrorPath</key>
+  <string>$HOME/Library/Logs/pcp.log</string>
+</dict>
+</plist>
+EOF
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.github.patoconnor43.pcp.plist
+```
+
+The heredoc fills in the absolute paths, since launchd doesn't expand `~` or
+read your shell's environment. Check that `command -v pcp` prints the real
+binary (e.g. `/opt/homebrew/bin/pcp`), not a version-manager shim. Logs go to
+`~/Library/Logs/pcp.log`.
+
+| Task | Command |
+|---|---|
+| Reload config and secrets | `launchctl kill HUP gui/$(id -u)/com.github.patoconnor43.pcp` |
+| Restart (after `brew upgrade` or changing `listen`) | `launchctl kickstart -k gui/$(id -u)/com.github.patoconnor43.pcp` |
+| Stop and remove | `launchctl bootout gui/$(id -u)/com.github.patoconnor43.pcp && rm ~/Library/LaunchAgents/com.github.patoconnor43.pcp.plist` |
+
 ## Configuration
 
 Default location: `$XDG_CONFIG_HOME/pcp/config.yaml`, falling back to
@@ -144,7 +191,7 @@ serving. Quote template values in YAML (`'...'`), since `{` starts a YAML map.
 - Responses are streamed (SSE works). Redirects pass through unchanged, so a
   client following an absolute redirect to the upstream will bypass pcp.
 - Unmatched paths return `404` with a JSON list of routes.
-- `/_pcp` is reserved for pcp's own endpoints.
+- `/_pcp` and `/llms.txt` are reserved for pcp's own endpoints.
 
 ### Secrets
 
@@ -190,6 +237,11 @@ the previous config keeps serving. Reloading clears cached tokens. Changing
 
 ### HTTP endpoints
 
+`GET /_pcp/llms.txt` (also served at `/llms.txt` and `/`) returns plain-text
+usage instructions for LLM agents: how to call APIs through pcp, the current
+routes with their local URLs, and how to handle absolute upstream URLs and
+errors. It never includes secret names, header names, or values.
+
 `GET /_pcp/routes` returns the configured routes (no credentials) so clients
 can discover what's available:
 
@@ -208,18 +260,12 @@ Add something like this to your agent's instructions (e.g. `CLAUDE.md`):
 ## API access
 
 A local proxy at http://127.0.0.1:7277 adds credentials to API requests.
-Never ask for, look up, or include API tokens yourself.
-
-- List available APIs: `curl -s http://127.0.0.1:7277/_pcp/routes`
-- Call an API by putting its route prefix before the API path, e.g.
-  `curl -s http://127.0.0.1:7277/github/user` instead of
-  `curl -s https://api.github.com/user`.
-- Don't set `Authorization` or other credential headers; the proxy sets them.
-- A `502` mentioning "token source" means the proxy couldn't authenticate.
-  Report it to the user instead of retrying.
+Before calling an API, read `curl -s http://127.0.0.1:7277/llms.txt` for the
+available APIs and how to use them. Never ask for or send API tokens yourself.
 ```
 
-`pcp routes` prints the exact URLs to paste into instructions.
+The proxy serves the details, so these instructions don't need to change when
+you add or remove routes.
 
 ## Security notes
 

@@ -21,6 +21,9 @@ const (
 
 	// ReservedPrefix is used for pcp's own endpoints (e.g. /_pcp/routes).
 	ReservedPrefix = "/_pcp"
+	// LLMsPath serves usage docs for LLM agents, following the llms.txt
+	// convention. Also reserved.
+	LLMsPath = "/llms.txt"
 
 	TypeOAuth2ClientCredentials = "oauth2_client_credentials"
 )
@@ -188,8 +191,10 @@ func (r *Route) normalize() error {
 	if r.Prefix == "/" {
 		return errors.New("prefix must not be /")
 	}
-	if r.Prefix == ReservedPrefix || strings.HasPrefix(r.Prefix, ReservedPrefix+"/") {
-		return fmt.Errorf("prefix %q is reserved", ReservedPrefix)
+	for _, reserved := range []string{ReservedPrefix, LLMsPath} {
+		if r.Prefix == reserved || strings.HasPrefix(r.Prefix, reserved+"/") {
+			return fmt.Errorf("prefix %q is reserved", reserved)
+		}
 	}
 
 	u, err := parseHTTPURL(r.Upstream)

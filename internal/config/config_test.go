@@ -106,6 +106,7 @@ tokens:
 		{"root prefix", "routes: [{prefix: /, upstream: https://a.com}]", "must not be /"},
 		{"reserved prefix", "routes: [{prefix: /_pcp, upstream: https://a.com}]", "reserved"},
 		{"reserved subprefix", "routes: [{prefix: /_pcp/x, upstream: https://a.com}]", "reserved"},
+		{"reserved llms.txt", "routes: [{prefix: /llms.txt, upstream: https://a.com}]", "reserved"},
 		{"invalid prefix char", "routes: [{prefix: '/a b', upstream: https://a.com}]", "invalid character"},
 		{"duplicate prefix", "routes: [{prefix: /a, upstream: https://a.com}, {prefix: /a/, upstream: https://b.com}]", "duplicate prefix"},
 		{"missing upstream", "routes: [{prefix: /a}]", "upstream: is required"},

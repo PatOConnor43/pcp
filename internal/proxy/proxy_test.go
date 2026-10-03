@@ -167,6 +167,7 @@ func TestProxyNotFound(t *testing.T) {
 		}
 		var body struct {
 			Error  string      `json:"error"`
+			Help   string      `json:"help"`
 			Routes []RouteInfo `json:"routes"`
 		}
 		err = json.NewDecoder(resp.Body).Decode(&body)
@@ -176,6 +177,9 @@ func TestProxyNotFound(t *testing.T) {
 		}
 		if resp.StatusCode != http.StatusNotFound || resp.Header.Get("Content-Type") != "application/json" {
 			t.Errorf("%s: got %d %s", path, resp.StatusCode, resp.Header.Get("Content-Type"))
+		}
+		if !strings.Contains(body.Help, "/llms.txt") {
+			t.Errorf("%s: help = %q", path, body.Help)
 		}
 		if len(body.Routes) != 1 || body.Routes[0] != (RouteInfo{"/api", up.URL + "/base"}) {
 			t.Errorf("%s: routes = %+v", path, body.Routes)
@@ -359,5 +363,50 @@ routes:
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusMethodNotAllowed || resp.Header.Get("Allow") != "GET, HEAD" {
 		t.Errorf("POST: %d %v", resp.StatusCode, resp.Header)
+	}
+}
+
+func TestProxyLLMsTxt(t *testing.T) {
+	px, _ := newProxy(t, `
+routes:
+  - prefix: /zeta
+    upstream: https://z.example.com
+  - prefix: /alpha
+    upstream: https://a.example.com/v1
+    headers: {Authorization: '{{ secret "s" }}'}
+`, secrets.Memory{"s": testSecret})
+
+	for _, path := range []string{"/", "/llms.txt", "/_pcp/llms.txt", "/_pcp/../llms.txt"} {
+		resp, err := http.Get(px.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		body := string(raw)
+		if resp.StatusCode != http.StatusOK || !strings.HasPrefix(resp.Header.Get("Content-Type"), "text/plain") {
+			t.Errorf("%s: got %d %s", path, resp.StatusCode, resp.Header.Get("Content-Type"))
+		}
+		for _, want := range []string{
+			"- " + px.URL + "/alpha → https://a.example.com/v1\n- " + px.URL + "/zeta → https://z.example.com\n",
+			"`curl -s " + px.URL + "/alpha/some/path` calls `https://a.example.com/v1/some/path`",
+			px.URL + "/_pcp/routes",
+		} {
+			if !strings.Contains(body, want) {
+				t.Errorf("%s: missing %q in:\n%s", path, want, body)
+			}
+		}
+		if strings.Contains(body, testSecret) || strings.Contains(body, "Authorization") {
+			t.Errorf("%s: leaks credential details:\n%s", path, body)
+		}
+	}
+
+	resp, err := http.Post(px.URL+"/llms.txt", "text/plain", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("POST: %d", resp.StatusCode)
 	}
 }

@@ -128,9 +128,12 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		)
 	}()
 	if !ok {
-		if cleanPath(r.URL.EscapedPath()) == routesPath {
+		switch path := cleanPath(r.URL.EscapedPath()); {
+		case path == routesPath:
 			p.serveRoutes(rec, r)
-		} else {
+		case slices.Contains(llmsPaths, path):
+			p.serveLLMs(rec, r)
+		default:
 			p.notFound(rec, r)
 		}
 		return
@@ -242,9 +245,7 @@ func Routes(routes []config.Route) []RouteInfo {
 const routesPath = config.ReservedPrefix + "/routes"
 
 func (p *Proxy) serveRoutes(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+	if !allowGet(w, r) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -253,9 +254,20 @@ func (p *Proxy) serveRoutes(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// allowGet responds 405 and returns false unless r is a GET or HEAD.
+func allowGet(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		return true
+	}
+	w.Header().Set("Allow", "GET, HEAD")
+	writeJSON(w, http.StatusMethodNotAllowed, map[string]any{"error": "method not allowed"})
+	return false
+}
+
 func (p *Proxy) notFound(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusNotFound, map[string]any{
 		"error":  fmt.Sprintf("no route matches %s", r.URL.EscapedPath()),
+		"help":   "See " + config.LLMsPath + " for how to use this proxy.",
 		"routes": p.info,
 	})
 }
