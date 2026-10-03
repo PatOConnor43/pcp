@@ -64,6 +64,7 @@ must be running; headless servers often don't have one.
    routes:
      - prefix: /github
        upstream: https://api.github.com
+       description: GitHub REST API
        headers:
          Authorization: 'Bearer {{ secret "github" }}'
    ```
@@ -158,6 +159,7 @@ tokens:                       # optional
 routes:
   - prefix: /myapi
     upstream: https://api.example.com/v1
+    description: Internal orders API  # optional; shown in /llms.txt
     headers:
       Authorization: 'Bearer {{ token "myapi" }}'
       X-Static: '{{ secret "other" }}'
@@ -239,8 +241,9 @@ the previous config keeps serving. Reloading clears cached tokens. Changing
 
 `GET /_pcp/llms.txt` (also served at `/llms.txt` and `/`) returns plain-text
 usage instructions for LLM agents: how to call APIs through pcp, the current
-routes with their local URLs, and how to handle absolute upstream URLs and
-errors. It never includes secret names, header names, or values.
+routes with their local URLs and descriptions, and how to handle absolute
+upstream URLs and errors. It never includes secret names, header names, or
+values.
 
 `GET /_pcp/routes` returns the configured routes (no credentials) so clients
 can discover what's available:

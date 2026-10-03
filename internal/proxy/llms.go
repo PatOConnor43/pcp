@@ -43,7 +43,11 @@ headers pass through unchanged.
 
 	b.WriteString("\n## APIs\n\n")
 	for _, r := range p.info {
-		fmt.Fprintf(&b, "- %s%s → %s\n", base, r.Prefix, r.Upstream)
+		fmt.Fprintf(&b, "- %s%s → %s", base, r.Prefix, r.Upstream)
+		if r.Description != "" {
+			fmt.Fprintf(&b, ": %s", r.Description)
+		}
+		b.WriteString("\n")
 	}
 
 	fmt.Fprintf(&b, `

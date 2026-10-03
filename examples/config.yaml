@@ -28,6 +28,8 @@ routes:
   # Bearer token from the keychain.
   - prefix: /github
     upstream: https://api.github.com
+    # Optional. Shown to LLM agents in /llms.txt and in `pcp routes`.
+    description: GitHub REST API (read-only token)
     headers:
       Authorization: 'Bearer {{ secret "github" }}'
       Accept: application/vnd.github+json

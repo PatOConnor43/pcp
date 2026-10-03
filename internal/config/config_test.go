@@ -22,6 +22,9 @@ tokens:
 routes:
   - prefix: /github
     upstream: https://api.github.com
+    description: >
+      GitHub REST API,
+        read-only token
     headers:
       Authorization: 'Bearer {{ secret "github" }}'
       Accept: application/vnd.github+json
@@ -57,6 +60,9 @@ func TestParseValid(t *testing.T) {
 	}
 	if gh.Headers["Accept"].Raw() != "application/vnd.github+json" {
 		t.Errorf("accept = %q", gh.Headers["Accept"].Raw())
+	}
+	if gh.Description != "GitHub REST API, read-only token" {
+		t.Errorf("description = %q", gh.Description)
 	}
 
 	my := cfg.Routes[1]

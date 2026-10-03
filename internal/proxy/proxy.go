@@ -227,15 +227,16 @@ func (p *Proxy) upstreamError(w http.ResponseWriter, r *http.Request, err error)
 
 // RouteInfo describes a route without its credentials.
 type RouteInfo struct {
-	Prefix   string `json:"prefix"`
-	Upstream string `json:"upstream"`
+	Prefix      string `json:"prefix"`
+	Upstream    string `json:"upstream"`
+	Description string `json:"description,omitempty"`
 }
 
 // Routes lists routes sorted by prefix.
 func Routes(routes []config.Route) []RouteInfo {
 	infos := make([]RouteInfo, 0, len(routes))
 	for _, rt := range routes {
-		infos = append(infos, RouteInfo{rt.Prefix, rt.UpstreamURL.String()})
+		infos = append(infos, RouteInfo{rt.Prefix, rt.UpstreamURL.String(), rt.Description})
 	}
 	slices.SortFunc(infos, func(a, b RouteInfo) int { return strings.Compare(a.Prefix, b.Prefix) })
 	return infos

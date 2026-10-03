@@ -46,9 +46,9 @@ func runRoutes(args []string, env Env) error {
 	}
 
 	tw := tabwriter.NewWriter(env.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "LOCAL\tUPSTREAM")
+	fmt.Fprintln(tw, "LOCAL\tUPSTREAM\tDESCRIPTION")
 	for _, r := range routes {
-		fmt.Fprintf(tw, "%s%s\t%s\n", base, r.Prefix, r.Upstream)
+		fmt.Fprintf(tw, "%s%s\t%s\t%s\n", base, r.Prefix, r.Upstream, r.Description)
 	}
 	return tw.Flush()
 }

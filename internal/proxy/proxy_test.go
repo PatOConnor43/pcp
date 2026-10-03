@@ -181,7 +181,7 @@ func TestProxyNotFound(t *testing.T) {
 		if !strings.Contains(body.Help, "/llms.txt") {
 			t.Errorf("%s: help = %q", path, body.Help)
 		}
-		if len(body.Routes) != 1 || body.Routes[0] != (RouteInfo{"/api", up.URL + "/base"}) {
+		if len(body.Routes) != 1 || body.Routes[0] != (RouteInfo{"/api", up.URL + "/base", ""}) {
 			t.Errorf("%s: routes = %+v", path, body.Routes)
 		}
 	}
@@ -348,7 +348,7 @@ routes:
 	if err := json.Unmarshal(raw, &body); err != nil {
 		t.Fatal(err)
 	}
-	want := []RouteInfo{{"/alpha", "https://a.example.com/v1"}, {"/zeta", "https://z.example.com"}}
+	want := []RouteInfo{{"/alpha", "https://a.example.com/v1", ""}, {"/zeta", "https://z.example.com", ""}}
 	if resp.StatusCode != http.StatusOK || !strings.Contains(string(raw), "<prefix>") || !slices.Equal(body.Routes, want) {
 		t.Errorf("got %d %s", resp.StatusCode, raw)
 	}
@@ -373,6 +373,7 @@ routes:
     upstream: https://z.example.com
   - prefix: /alpha
     upstream: https://a.example.com/v1
+    description: Alpha API, read-only
     headers: {Authorization: '{{ secret "s" }}'}
 `, secrets.Memory{"s": testSecret})
 
@@ -388,7 +389,7 @@ routes:
 			t.Errorf("%s: got %d %s", path, resp.StatusCode, resp.Header.Get("Content-Type"))
 		}
 		for _, want := range []string{
-			"- " + px.URL + "/alpha → https://a.example.com/v1\n- " + px.URL + "/zeta → https://z.example.com\n",
+			"- " + px.URL + "/alpha → https://a.example.com/v1: Alpha API, read-only\n- " + px.URL + "/zeta → https://z.example.com\n",
 			"`curl -s " + px.URL + "/alpha/some/path` calls `https://a.example.com/v1/some/path`",
 			px.URL + "/_pcp/routes",
 		} {

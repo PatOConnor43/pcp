@@ -47,6 +47,9 @@ type Route struct {
 	Prefix   string              `yaml:"prefix"`
 	Upstream string              `yaml:"upstream"`
 	Headers  map[string]Template `yaml:"headers"`
+	// Description tells clients (e.g. LLM agents) what the API is for.
+	// Optional; whitespace is collapsed to single spaces.
+	Description string `yaml:"description"`
 
 	// UpstreamURL is Upstream parsed, with any trailing slash removed.
 	UpstreamURL *url.URL `yaml:"-"`
@@ -204,6 +207,7 @@ func (r *Route) normalize() error {
 	u.Path = strings.TrimRight(u.Path, "/")
 	u.RawPath = strings.TrimRight(u.RawPath, "/")
 	r.UpstreamURL = u
+	r.Description = strings.Join(strings.Fields(r.Description), " ")
 
 	canonical := map[string]string{}
 	for _, name := range slices.Sorted(maps.Keys(r.Headers)) {

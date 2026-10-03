@@ -21,6 +21,7 @@ var starterConfig = `# pcp config. Full reference:
 routes:
   - prefix: /github
     upstream: https://api.github.com
+    description: GitHub REST API  # optional; tells LLM agents what this is for
     headers:
       Authorization: 'Bearer {{ secret "github" }}'
 `

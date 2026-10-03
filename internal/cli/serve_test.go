@@ -200,6 +200,7 @@ routes:
     upstream: https://z.example.com
   - prefix: /alpha
     upstream: https://a.example.com/v1
+    description: Alpha API
     headers: {Authorization: '{{ secret "never-read" }}'}
 `)
 	// Secrets is nil: routes must not touch the keychain.
@@ -209,19 +210,20 @@ routes:
 	}
 	lines := strings.Split(strings.TrimSpace(r.stdout), "\n")
 	if len(lines) != 3 ||
-		!lineMatches(lines[1], "http://127.0.0.1:9000/alpha", "https://a.example.com/v1") ||
+		!lineMatches(lines[1], "http://127.0.0.1:9000/alpha", "https://a.example.com/v1", "Alpha API") ||
 		!lineMatches(lines[2], "http://127.0.0.1:9000/zeta", "https://z.example.com") {
 		t.Errorf("stdout:\n%s", r.stdout)
 	}
 
 	r = invoke(t, Env{}, "routes", "--config", path, "--json")
 	var out struct {
-		Routes []struct{ URL, Prefix, Upstream string }
+		Routes []struct{ URL, Prefix, Upstream, Description string }
 	}
 	if err := json.Unmarshal([]byte(r.stdout), &out); err != nil {
 		t.Fatalf("%v: %s", err, r.stdout)
 	}
-	if len(out.Routes) != 2 || out.Routes[0].URL != "http://127.0.0.1:9000/alpha" || out.Routes[0].Upstream != "https://a.example.com/v1" {
+	if len(out.Routes) != 2 || out.Routes[0].URL != "http://127.0.0.1:9000/alpha" || out.Routes[0].Upstream != "https://a.example.com/v1" ||
+		out.Routes[0].Description != "Alpha API" || strings.Contains(r.stdout, `"description": ""`) {
 		t.Errorf("json: %s", r.stdout)
 	}
 }
