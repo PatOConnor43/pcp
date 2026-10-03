@@ -50,6 +50,11 @@ homebrew_casks:
       post:
         # Release binaries aren't notarized; clear the quarantine flag so
         # Gatekeeper doesn't block them.
+        #
+        # This generates a `postflight` block, which Homebrew 7 deprecated in
+        # favor of `postflight_steps` (brew warns on install). Switch to the
+        # step-based hooks once GoReleaser v2.19 ships them:
+        # https://github.com/goreleaser/goreleaser/issues/6870
         install: |
           if OS.mac?
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/pcp"]
